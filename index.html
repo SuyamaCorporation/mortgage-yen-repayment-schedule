@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>住宅ローン元利均等返済スケジュール</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    input:focus { outline: none; }
+    .bar-principal { background: #3b82f6; }
+    .bar-interest { background: #f97316; }
+    .table-row:nth-child(odd) { background: #f8fafc; }
+    .chart-wrap { overflow-x: auto; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen font-sans">
+
+<div class="max-w-3xl mx-auto px-4 py-6">
+
+  <header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-indigo-900 mb-1">🏠 住宅ローン返済シミュレーター</h1>
+    <p class="text-indigo-500 text-sm">元利均等返済方式で月次スケジュールを計算します</p>
+  </header>
+
+  <!-- Input Card -->
+  <div class="bg-white rounded-2xl shadow-lg p-6 mb-5">
+    <h2 class="text-lg font-bold text-gray-800 mb-4">ローン条件を入力</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1" for="principal">借入額（万円）</label>
+        <input id="principal" type="number" min="100" max="100000" value="3000" class="w-full border-2 border-gray-200 focus:border-indigo-400 rounded-lg px-3 py-2 text-center font-bold" aria-label="借入額（万円）" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1" for="rate">金利（年率%）</label>
+        <input id="rate" type="number" min="0.1" max="10" step="0.01" value="1.5" class="w-full border-2 border-gray-200 focus:border-indigo-400 rounded-lg px-3 py-2 text-center font-bold" aria-label="年率（%）" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1" for="years">返済期間（年）</label>
+        <input id="years" type="number" min="1" max="50" value="35" class="w-full border-2 border-gray-200 focus:border-indigo-400 rounded-lg px-3 py-2 text-center font-bold" aria-label="返済期間（年）" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1" for="bonus">ボーナス返済（万円/回）</label>
+        <input id="bonus" type="number" min="0" max="1000" value="0" class="w-full border-2 border-gray-200 focus:border-indigo-400 rounded-lg px-3 py-2 text-center font-bold" aria-label="ボーナス返済額（万円）" />
+      </div>
+    </div>
+    <button id="btn-calc" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 rounded-xl text-lg transition-all" aria-label="計算する">計算する</button>
+  </div>
+
+  <!-- Summary -->
+  <div id="summary" class="hidden">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div class="bg-white rounded-2xl shadow p-4 text-center">
+        <div class="text-xs text-gray-500 mb-1">月々返済額</div>
+        <div id="sum-monthly" class="text-xl font-bold text-indigo-600"></div>
+        <div class="text-xs text-gray-400">円</div>
+      </div>
+      <div class="bg-white rounded-2xl shadow p-4 text-center">
+        <div class="text-xs text-gray-500 mb-1">総返済額</div>
+        <div id="sum-total" class="text-xl font-bold text-gray-800"></div>
+        <div class="text-xs text-gray-400">万円</div>
+      </div>
+      <div class="bg-white rounded-2xl shadow p-4 text-center">
+        <div class="text-xs text-gray-500 mb-1">総利息額</div>
+        <div id="sum-interest" class="text-xl font-bold text-orange-500"></div>
+        <div class="text-xs text-gray-400">万円</div>
+      </div>
+      <div class="bg-white rounded-2xl shadow p-4 text-center">
+        <div class="text-xs text-gray-500 mb-1">元金比率</div>
+        <div id="sum-ratio" class="text-xl font-bold text-green-600"></div>
+        <div class="text-xs text-gray-400">%</div>
+      </div>
+    </div>
+
+    <!-- Bar Chart: Principal vs Interest by Year -->
+    <div class="bg-white rounded-2xl shadow-lg p-5 mb-5">
+      <h3 class="font-bold text-gray-800 mb-1">元金・利息の内訳（年別）</h3>
+      <div class="flex gap-4 text-xs text-gray-500 mb-3">
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bar-principal inline-block"></span>元金</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bar-interest inline-block"></span>利息</span>
+      </div>
+      <div class="chart-wrap">
+        <div id="bar-chart" class="flex items-end gap-1" style="height:140px; min-width:400px"></div>
+        <div id="bar-labels" class="flex gap-1 mt-1 text-xs text-gray-400" style="min-width:400px"></div>
+      </div>
+    </div>
+
+    <!-- Balance Line Graph (SVG) -->
+    <div class="bg-white rounded-2xl shadow-lg p-5 mb-5">
+      <h3 class="font-bold text-gray-800 mb-3">残高推移</h3>
+      <div class="chart-wrap">
+        <svg id="line-chart" width="600" height="160" viewBox="0 0 600 160" xmlns="http://www.w3.org/2000/svg" aria-label="残高推移グラフ" role="img">
+          <defs>
+            <linearGradient id="balGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#6366f1" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <g id="line-chart-content"></g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Schedule Table -->
+    <div class="bg-white rounded-2xl shadow-lg p-5 mb-5">
+      <h3 class="font-bold text-gray-800 mb-1">返済スケジュール表</h3>
+      <div class="flex gap-3 mb-3 text-xs">
+        <button id="tab-monthly" class="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 font-semibold" aria-label="月次表示" role="tab">月次（最初24ヶ月）</button>
+        <button id="tab-yearly" class="px-3 py-1 rounded-full bg-gray-100 text-gray-500 font-semibold" aria-label="年次表示" role="tab">年次サマリ</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs sm:text-sm" role="table">
+          <thead id="table-head"></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-xs text-yellow-700">
+      ⚠️ このシミュレーターは参考値です。実際の返済額は金融機関により異なります。融資の際は専門家・金融機関にご相談ください。
+    </div>
+  </div>
+
+</div>
+
+<script>
+let scheduleData = { monthly: [], yearly: [] };
+let viewMode = 'monthly';
+
+function fmtMoney(val) {
+  return Math.round(val).toLocaleString('ja-JP');
+}
+function fmtWan(val) {
+  return (val / 10000).toFixed(1);
+}
+
+function calculate() {
+  const P0 = parseFloat(document.getElementById('principal').value) * 10000;
+  const annualRate = parseFloat(document.getElementById('rate').value) / 100;
+  const years = parseInt(document.getElementById('years').value);
+  const bonusPer = parseFloat(document.getElementById('bonus').value) * 10000;
+
+  const r = annualRate / 12;
+  const n = years * 12;
+
+  if (!P0 || !years || annualRate < 0) return;
+
+  // Monthly payment (元利均等)
+  let monthlyPayment;
+  if (r === 0) {
+    monthlyPayment = P0 / n;
+  } else {
+    monthlyPayment = P0 * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+  }
+
+  // Build monthly schedule
+  let balance = P0;
+  const monthly = [];
+  let totalPrincipal = 0, totalInterest = 0;
+
+  for (let i = 1; i <= n; i++) {
+    const interest = balance * r;
+    const principal = monthlyPayment - interest;
+    let bonusPayment = 0;
+
+    // Bonus payment in June and December
+    if (bonusPer > 0 && (i % 6 === 0)) {
+      bonusPayment = Math.min(bonusPer, balance - principal);
+    }
+
+    balance -= (principal + bonusPayment);
+    if (balance < 0) balance = 0;
+
+    totalPrincipal += principal + bonusPayment;
+    totalInterest += interest;
+
+    monthly.push({
+      month: i,
+      year: Math.ceil(i / 12),
+      payment: monthlyPayment + bonusPayment,
+      principal: principal + bonusPayment,
+      interest,
+      bonus: bonusPayment,
+      balance: Math.max(0, balance)
+    });
+    if (balance <= 0) break;
+  }
+
+  // Build yearly summary
+  const yearMap = {};
+  monthly.forEach(m => {
+    if (!yearMap[m.year]) yearMap[m.year] = { year: m.year, totalPayment: 0, principal: 0, interest: 0, balance: 0 };
+    yearMap[m.year].totalPayment += m.payment;
+    yearMap[m.year].principal += m.principal;
+    yearMap[m.year].interest += m.interest;
+    yearMap[m.year].balance = m.balance;
+  });
+  const yearly = Object.values(yearMap);
+
+  scheduleData = { monthly, yearly };
+
+  // Summary
+  const grandTotal = monthly.reduce((s, m) => s + m.payment, 0);
+  const grandInterest = monthly.reduce((s, m) => s + m.interest, 0);
+  document.getElementById('sum-monthly').textContent = fmtMoney(monthlyPayment);
+  document.getElementById('sum-total').textContent = fmtWan(grandTotal);
+  document.getElementById('sum-interest').textContent = fmtWan(grandInterest);
+  document.getElementById('sum-ratio').textContent = Math.round((P0 / grandTotal) * 100);
+
+  renderBarChart(yearly);
+  renderLineChart(yearly, P0);
+  renderTable(viewMode);
+  document.getElementById('summary').classList.remove('hidden');
+}
+
+function renderBarChart(yearly) {
+  const chart = document.getElementById('bar-chart');
+  const labels = document.getElementById('bar-labels');
+  const maxPayment = Math.max(...yearly.map(y => y.principal + y.interest));
+  const barHeight = 120;
+  const barW = Math.max(8, Math.floor(540 / yearly.length) - 2);
+
+  chart.innerHTML = yearly.map(y => {
+    const pH = Math.round((y.principal / maxPayment) * barHeight);
+    const iH = Math.round((y.interest / maxPayment) * barHeight);
+    return `<div class="flex flex-col items-center" style="width:${barW /* xss-ok: 整数計算値 */}px;min-width:${barW /* xss-ok: 整数計算値 */}px">
+      <div class="bar-interest w-full rounded-t-sm" style="height:${iH /* xss-ok: 整数計算値 */}px"></div>
+      <div class="bar-principal w-full" style="height:${pH /* xss-ok: 整数計算値 */}px"></div>
+    </div>`;
+  }).join('');
+
+  labels.innerHTML = yearly.map((y, i) =>
+    (yearly.length <= 20 || i % 5 === 0 || i === yearly.length - 1)
+      ? `<div style="width:${barW /* xss-ok: 整数計算値 */}px;min-width:${barW /* xss-ok: 整数計算値 */}px;text-align:center">${y.year /* xss-ok: 整数年カウント */}年</div>`
+      : `<div style="width:${barW /* xss-ok: 整数計算値 */}px;min-width:${barW /* xss-ok: 整数計算値 */}px"></div>`
+  ).join('');
+}
+
+function renderLineChart(yearly, P0) {
+  const svgW = 600, svgH = 140, padL = 50, padR = 10, padT = 10, padB = 20;
+  const W = svgW - padL - padR;
+  const H = svgH - padT - padB;
+
+  const pts = [{ x: 0, bal: P0 }, ...yearly.map((y, i) => ({ x: i + 1, bal: y.balance }))];
+  const maxB = P0;
+  const n = pts.length - 1;
+
+  const toSVGX = x => padL + (x / n) * W;
+  const toSVGY = b => padT + H - (b / maxB) * H;
+
+  const linePts = pts.map(p => `${toSVGX(p.x)},${toSVGY(p.bal)}`).join(' ');
+  const areaPath = `M${toSVGX(0)},${toSVGY(P0)} ` + pts.slice(1).map(p => `L${toSVGX(p.x)},${toSVGY(p.bal)}`).join(' ') + ` L${toSVGX(n)},${toSVGY(0)} L${toSVGX(0)},${toSVGY(0)} Z`;
+
+  // Y axis labels
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => ({
+    y: toSVGY(t * maxB),
+    label: fmtWan(t * maxB) + '万'
+  }));
+
+  const content = `
+    ${yTicks.map(t => `<line x1="${padL}" y1="${t.y}" x2="${svgW - padR}" y2="${t.y}" stroke="#e5e7eb" stroke-width="1"/><text x="${padL - 4}" y="${t.y + 4}" text-anchor="end" font-size="9" fill="#9ca3af">${t.label}</text>`).join('')}
+    <path d="${areaPath}" fill="url(#balGrad)"/>
+    <polyline points="${linePts}" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round"/>
+    ${yearly.length <= 10 ? yearly.map((y, i) => `<circle cx="${toSVGX(i+1)}" cy="${toSVGY(y.balance)}" r="3" fill="#6366f1"/>`).join('') : ''}
+  `;
+  document.getElementById('line-chart-content').innerHTML = content; // xss-ok: contentはSVG要素を算術値から生成した内部文字列
+}
+
+function renderTable(mode) {
+  const thead = document.getElementById('table-head');
+  const tbody = document.getElementById('table-body');
+
+  if (mode === 'monthly') {
+    const data = scheduleData.monthly.slice(0, 24);
+    thead.innerHTML = `<tr class="bg-indigo-50 text-indigo-700">
+      <th class="py-2 px-2 text-left">月</th>
+      <th class="py-2 px-2 text-right">返済額</th>
+      <th class="py-2 px-2 text-right">元金</th>
+      <th class="py-2 px-2 text-right">利息</th>
+      <th class="py-2 px-2 text-right">残高</th>
+    </tr>`;
+    tbody.innerHTML = data.map(m => `
+      <tr class="table-row hover:bg-indigo-50">
+        <td class="py-1.5 px-2 text-gray-600">${m.year /* xss-ok: 整数年カウント */}年${((m.month - 1) % 12) + 1 /* xss-ok: 整数計算値 */}ヶ月目</td>
+        <td class="py-1.5 px-2 text-right font-semibold">${fmtMoney(m.payment) /* xss-ok: 数値をfmtMoney()でフォーマット */}円</td>
+        <td class="py-1.5 px-2 text-right text-blue-600">${fmtMoney(m.principal) /* xss-ok: 数値をfmtMoney()でフォーマット */}円</td>
+        <td class="py-1.5 px-2 text-right text-orange-500">${fmtMoney(m.interest) /* xss-ok: 数値をfmtMoney()でフォーマット */}円</td>
+        <td class="py-1.5 px-2 text-right text-gray-700">${fmtMoney(m.balance) /* xss-ok: 数値をfmtMoney()でフォーマット */}円</td>
+      </tr>
+    `).join('');
+  } else {
+    const data = scheduleData.yearly;
+    thead.innerHTML = `<tr class="bg-indigo-50 text-indigo-700">
+      <th class="py-2 px-2 text-left">年</th>
+      <th class="py-2 px-2 text-right">年間返済額</th>
+      <th class="py-2 px-2 text-right">元金計</th>
+      <th class="py-2 px-2 text-right">利息計</th>
+      <th class="py-2 px-2 text-right">残高</th>
+    </tr>`;
+    tbody.innerHTML = data.map(y => `
+      <tr class="table-row hover:bg-indigo-50">
+        <td class="py-1.5 px-2 text-gray-600">${y.year /* xss-ok: 整数年カウント */}年目</td>
+        <td class="py-1.5 px-2 text-right font-semibold">${fmtWan(y.totalPayment) /* xss-ok: 数値をfmtWan()でフォーマット */}万円</td>
+        <td class="py-1.5 px-2 text-right text-blue-600">${fmtWan(y.principal) /* xss-ok: 数値をfmtWan()でフォーマット */}万円</td>
+        <td class="py-1.5 px-2 text-right text-orange-500">${fmtWan(y.interest) /* xss-ok: 数値をfmtWan()でフォーマット */}万円</td>
+        <td class="py-1.5 px-2 text-right text-gray-700">${fmtWan(y.balance) /* xss-ok: 数値をfmtWan()でフォーマット */}万円</td>
+      </tr>
+    `).join('');
+  }
+}
+
+document.getElementById('btn-calc').addEventListener('click', calculate);
+
+document.getElementById('tab-monthly').addEventListener('click', () => {
+  viewMode = 'monthly';
+  document.getElementById('tab-monthly').className = 'px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 font-semibold';
+  document.getElementById('tab-yearly').className = 'px-3 py-1 rounded-full bg-gray-100 text-gray-500 font-semibold';
+  renderTable('monthly');
+});
+
+document.getElementById('tab-yearly').addEventListener('click', () => {
+  viewMode = 'yearly';
+  document.getElementById('tab-yearly').className = 'px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 font-semibold';
+  document.getElementById('tab-monthly').className = 'px-3 py-1 rounded-full bg-gray-100 text-gray-500 font-semibold';
+  renderTable('yearly');
+});
+
+calculate();
+</script>
+</body>
+</html>
